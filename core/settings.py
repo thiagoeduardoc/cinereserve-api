@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     'accounts',
     'movies',
     'movie_sessions',
+    'room',
     'drf_spectacular',
 ]
 

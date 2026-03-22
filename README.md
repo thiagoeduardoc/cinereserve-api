@@ -202,10 +202,10 @@ Resposta:
             "id": 1,
             "movie": 1,
             "movie_title": "Nome do Filme",
+            "room": 1,
             "room_name": "Sala 1",
             "start_time": "2025-01-20T19:00:00Z",
-            "end_time": "2025-01-20T21:00:00Z",
-            "room_capacity": 100
+            "end_time": "2025-01-20T21:00:00Z"
         }
     ]
 }
@@ -219,43 +219,76 @@ Resposta:
 ```
 GET /api/movies/sessions/{session_id}/seats/
 ```
-Não requer autenticação. Retorna todos os assentos com seus status.
+Não requer autenticação. Retorna todos os assentos da sala da sessão e a disponibilidade na sessão.
 
 Resposta:
 ```json
 {
-    "count": 100,
+    "count": 50,
     "next": null,
     "previous": null,
     "results": [
         {
             "id": 1,
             "row": "A",
-            "number": 1,
+            "seat_number": 1,
+            "is_available": true,
             "status": "available"
         },
         {
             "id": 2,
             "row": "A",
-            "number": 2,
+            "seat_number": 2,
+            "is_available": true,
             "status": "purchased"
         }
     ]
 }
 ```
 
-Status possíveis: `available`, `reserved`, `purchased`.
+Status possíveis: `available`, `reserved` (lock 10min), `purchased`, `unavailable`.
 
 ---
 
-### 🎟️ Reserva — `/api/movies/sessions/{session_id}/seats/{seat_id}/reserve/`
+### 🔒 Reserva — `/api/movies/sessions/{session_id}/seats/{seat_id}/reserve/`
 
-#### Reservar um assento
+#### Reservar um assento (Lock 10 minutos)
 ```
 POST /api/movies/sessions/{session_id}/seats/{seat_id}/reserve/
 Authorization: Bearer {access_token}
 ```
-Não requer body. Requer autenticação.
+Cria um lock temporário de **10 minutos** no assento. Requer autenticação.
+
+Resposta:
+```json
+{
+    "id": 1,
+    "seat_row": "A",
+    "seat_number": 1,
+    "movie_title": "Nome do Filme",
+    "room_name": "Sala 1",
+    "reserved_at": "2025-01-20T18:00:00Z",
+    "expires_at": "2025-01-20T18:10:00Z",
+    "time_remaining": 600
+}
+```
+
+⏰ **Comportamento:**
+- O assento fica reservado (temporariamente bloqueado) por 10 minutos
+- Outros usuários verão o status como `reserved`
+- Se não comprar dentro de 10 minutos, a reserva expira e o assento fica disponível novamente
+- Fazer outra reserva no mesmo assento antes de expirar retorna erro
+
+---
+
+### 💳 Compra — `/api/movies/sessions/{session_id}/seats/{seat_id}/purchase/`
+
+#### Finalizar compra (Converter Reserva em Ticket)
+```
+POST /api/movies/sessions/{session_id}/seats/{seat_id}/purchase/
+Authorization: Bearer {access_token}
+```
+Converte a reserva temporária em um ticket permanente. Requer reserva ativa. Requer autenticação.
 
 Resposta:
 ```json
@@ -264,7 +297,8 @@ Resposta:
     "seat": {
         "id": 1,
         "row": "A",
-        "number": 1,
+        "seat_number": 1,
+        "is_available": true,
         "status": "purchased"
     },
     "session": {
@@ -273,20 +307,57 @@ Resposta:
         "room": "Sala 1",
         "start_time": "2025-01-20T19:00:00Z"
     },
-    "purchased_at": "2025-01-20T18:00:00Z"
+    "purchased_at": "2025-01-20T18:05:00Z"
+}
+```
+
+**Erros possíveis:**
+- `Nenhuma reserva ativa encontrada` - Fazer reserva antes de comprar
+- `Reserva expirada` - Timeout de 10 minutos excedido
+- `Assento foi vendido para outro usuário` - Outro usuário comprou más rápido (reserva é cancelada)
+
+---
+
+### 📋 Minhas Reservas — `/api/movies/my-reservations/`
+
+#### Listar reservas ativas (não expiradas)
+```
+GET /api/movies/my-reservations/
+Authorization: Bearer {access_token}
+```
+Retorna apenas reservas válidas (que ainda não expiraram). Requer autenticação. Suporta paginação.
+
+Resposta:
+```json
+{
+    "count": 2,
+    "next": null,
+    "previous": null,
+    "results": [
+        {
+            "id": 1,
+            "seat_row": "A",
+            "seat_number": 5,
+            "movie_title": "Filme X",
+            "room_name": "Sala 1",
+            "reserved_at": "2025-01-20T18:00:00Z",
+            "expires_at": "2025-01-20T18:10:00Z",
+            "time_remaining": 120
+        }
+    ]
 }
 ```
 
 ---
 
-### 🗂️ Meus Tickets — `/api/movies/my-tickets/`
+### 🎟️ Meus Tickets — `/api/movies/my-tickets/`
 
-#### Listar tickets do usuário logado
+#### Listar tickets comprados (permanentes)
 ```
 GET /api/movies/my-tickets/
 Authorization: Bearer {access_token}
 ```
-Suporta paginação.
+Retorna todos os tickets já comprados (não expiram). Requer autenticação. Suporta paginação.
 
 Resposta:
 ```json
@@ -300,7 +371,8 @@ Resposta:
             "seat": {
                 "id": 1,
                 "row": "A",
-                "number": 1,
+                "seat_number": 5,
+                "is_available": true,
                 "status": "purchased"
             },
             "session": {
@@ -309,7 +381,7 @@ Resposta:
                 "room": "Sala 1",
                 "start_time": "2025-01-20T19:00:00Z"
             },
-            "purchased_at": "2025-01-20T18:00:00Z"
+            "purchased_at": "2025-01-20T18:05:00Z"
         }
     ]
 }
@@ -321,13 +393,80 @@ Resposta:
 
 ```
 cinereserve-api/
-├── accounts/          # Usuários e autenticação
+├── accounts/          # Usuários e autenticação (User)
 ├── core/              # Configurações do projeto
-├── movies/            # Filmes
-├── movie_sessions/    # Sessões, assentos e tickets
+├── movies/            # Filmes (Movie)
+├── room/              # Salas e assentos (Room, Seat)
+├── movie_sessions/    # Sessões, reservas e tickets (Session, Reservation, Ticket)
 ├── tests/             # Testes
 ├── .env               # Variáveis de ambiente (não versionado)
 ├── docker-compose.yml
-├── Dockerfile
-└── manage.py
+├── dockerfile
+├── manage.py
+├── pyproject.toml
+└── README.md
+```
+
+---
+
+## 🏗️ Arquitetura de Dados
+
+```
+User (accounts.User)
+├── has many Reservations
+└── has many Tickets
+
+Movie (movies.Movie)
+└── has many Sessions
+
+Room (room.Room)
+├── has many Seats
+└── has many Sessions
+
+Seat (room.Seat)
+├── has many Reservations
+└── has one Ticket (OneToOneField)
+
+Session (movie_sessions.Session)
+├── FK: Movie
+├── FK: Room
+├── has many Reservations (lock 10min)
+└── has many Tickets (permanentes)
+
+Reservation (movie_sessions.Reservation)
+├── FK: User
+├── FK: Seat
+├── FK: Session
+└── expires_at (expiração automática em 10min)
+
+Ticket (movie_sessions.Ticket)
+├── FK: User
+├── OneToOne: Seat
+└── FK: Session
+```
+
+---
+
+## ⏰ Fluxo de Reserva (CASE 5)
+
+```
+1. [GET] /api/movies/{movie_id}/sessions/
+   └─ Listar sessões disponíveis
+
+2. [GET] /api/movies/sessions/{session_id}/seats/
+   └─ Ver mapa de assentos (status: available, reserved, purchased, unavailable)
+
+3. [POST] /api/movies/sessions/{session_id}/seats/{seat_id}/reserve/
+   └─ ⏱️ CRIA LOCK DE 10 MINUTOS (Reservation)
+   └─ Status do assento muda para: "reserved"
+
+4. [POST] /api/movies/sessions/{session_id}/seats/{seat_id}/purchase/
+   └─ ✅ FINALIZA COMPRA (Converte Reservation → Ticket)
+   └─ Status do assento muda para: "purchased"
+   └─ Reservation é deletada automaticamente
+
+Timeout automático:
+- Se não comprar dentro de 10min → Reservation expira automaticamente
+- APScheduler limpa Reservations expiradas a cada 1 minuto
+- Assento volta a: "available"
 ```
