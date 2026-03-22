@@ -24,6 +24,9 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'rest_framework',
+    'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -33,6 +36,7 @@ INSTALLED_APPS = [
     'accounts',
     'movies',
     'movie_sessions',
+    'drf_spectacular',
 ]
 
 MIDDLEWARE = [
@@ -74,8 +78,8 @@ DATABASES = {
         'NAME': config('POSTGRES_DB'),
         'USER': config('POSTGRES_USER'),
         'PASSWORD': config('POSTGRES_PASSWORD'),
-        'HOST': 'localhost',  # Como o Django está no Ubuntu e o DB no Docker
-        'PORT': '5432',
+        'HOST': config('POSTGRES_HOST', default='db'),  # Como o Django está no Ubuntu e o DB no Docker
+        'PORT': config('POSTGRES_PORT', default='5432'),
     }
 }
 
@@ -125,4 +129,21 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated', 
     ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME':  timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS':  True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'CineReserve API',
+    'DESCRIPTION': 'API para gerenciamento de filmes e sessões do cinema Cinépolis Natal',
+    'VERSION': '1.0.0',
 }
