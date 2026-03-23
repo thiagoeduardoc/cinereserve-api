@@ -57,7 +57,12 @@ docker compose up db -d
 poetry run python manage.py migrate
 ```
 
-**5. Inicie o servidor**
+**5. Crie um superusuário (opcional, para acessar o admin)**
+```bash
+poetry run python manage.py createsuperuser
+```
+
+**6. Inicie o servidor**
 ```bash
 poetry run python manage.py runserver
 ```
@@ -72,6 +77,11 @@ Certifique-se de que o `.env` está configurado com `POSTGRES_HOST=db`.
 
 ```bash
 docker compose up --build
+```
+
+Para criar um superusuário (opcional, para acessar o admin):
+```bash
+docker compose exec web python manage.py createsuperuser
 ```
 
 A API estará disponível em `http://localhost:8000`.
